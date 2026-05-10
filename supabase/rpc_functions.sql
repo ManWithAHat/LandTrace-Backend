@@ -342,6 +342,42 @@ $$;
 
 
 -- ----------------------------------------------------------------
+-- 9. upsert_user
+-- Inserts a new user by phone, or returns the existing row if the
+-- phone is already registered. Uses xmax = 0 to atomically detect
+-- whether the row was inserted (new) or already existed (returning).
+-- ----------------------------------------------------------------
+CREATE OR REPLACE FUNCTION upsert_user(p_phone text)
+RETURNS json
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_result json;
+BEGIN
+  INSERT INTO users (phone)
+  VALUES (p_phone)
+  ON CONFLICT (phone) DO UPDATE SET phone = EXCLUDED.phone
+  RETURNING json_build_object(
+    'id',         id,
+    'phone',      phone,
+    'name',       name,
+    'village',    village,
+    'district',   district,
+    'state',      state,
+    'language',   language,
+    'created_at', created_at,
+    'updated_at', updated_at,
+    'is_new_user', (xmax = 0)
+  ) INTO v_result;
+
+  RETURN v_result;
+END;
+$$;
+
+
+-- ----------------------------------------------------------------
 -- 8. user_can_access_conflict
 -- Returns true when p_user_id owns either trace in the conflict.
 -- Used as an access guard in note and status-update endpoints.

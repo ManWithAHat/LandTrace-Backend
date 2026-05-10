@@ -60,35 +60,16 @@ export async function verifyOtp(req, res) {
     return errorResponse(res, 400, 'OTP_INVALID', 'Invalid or expired OTP');
   }
 
-  // Insert new user; if phone already exists, fetch the existing row
-  const { data: newUser, error: insertErr } = await supabase
-    .from('users')
-    .insert({ phone })
-    .select()
-    .single();
+  const { data: userResult, error: upsertErr } = await supabase.rpc('upsert_user', {
+    p_phone: phone,
+  });
 
-  let user;
-  let isNewUser;
-
-  if (!insertErr) {
-    user = newUser;
-    isNewUser = true;
-  } else if (insertErr.code === '23505') {
-    const { data: existing, error: fetchErr } = await supabase
-      .from('users')
-      .select('*')
-      .eq('phone', phone)
-      .single();
-
-    if (fetchErr || !existing) {
-      return errorResponse(res, 500, 'DB_ERROR', 'Failed to fetch user');
-    }
-    user = existing;
-    isNewUser = false;
-  } else {
-    console.error('Insert user:', insertErr);
-    return errorResponse(res, 500, 'DB_ERROR', 'Failed to create user');
+  if (upsertErr || !userResult) {
+    console.error('upsert_user:', upsertErr);
+    return errorResponse(res, 500, 'DB_ERROR', 'Failed to create or fetch user');
   }
+
+  const { is_new_user: isNewUser, ...user } = userResult;
 
   const accessToken = signAccessToken(user.id);
   const refreshToken = generateRefreshToken();
